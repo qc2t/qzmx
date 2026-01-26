@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>曲轴数据查询系统（表格版）</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.2.3/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; padding: 20px 0; }
+        .container-fluid { max-width: 1400px; } /* 宽屏显示 */
+        
+        /* 搜索框样式优化 */
+        .search-area {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+
+        /* 表格样式仿 Excel */
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            overflow-x: auto; /* 关键：手机端允许横向滚动 */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        
+        .table {
+            margin-bottom: 0;
+            white-space: nowrap; /* 关键：防止文字换行，保持表格整齐 */
+            font-size: 0.95rem;
+        }
+        
+        .table thead th {
+            background-color: #e9ecef;
+            color: #495057;
+            position: sticky; /* 表头固定 */
+            top: 0;
+            z-index: 1;
+        }
+        
+        /* 选中行高亮 */
+        .highlight-row { background-color: #fff3cd !important; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid">
+    <div class="text-center mb-3">
+        <h3>📊 曲轴信息表查询</h3>
+    </div>
+
+    <div class="search-area">
+        <div class="input-group">
+            <input type="text" id="searchInput" class="form-control form-control-lg" placeholder="输入轴号查询（如：2006T6 或 367）">
+            <button class="btn btn-primary btn-lg px-4" type="button" onclick="performSearch()">查询</button>
+            <button class="btn btn-outline-secondary btn-lg" type="button" onclick="resetTable()">重置(显示全部)</button>
+        </div>
+        <div class="form-text mt-2 text-muted">提示：支持模糊搜索，结果将保留源文件表格格式。</div>
+    </div>
+
+    <div id="loading" class="text-center text-muted my-4">正在加载数据...</div>
+    <div class="table-container d-none" id="tableWrapper">
+        <table class="table table-bordered table-striped table-hover" id="dataTable">
+            <thead id="tableHead">
+                </thead>
+            <tbody id="tableBody">
+                </tbody>
+        </table>
+    </div>
+    <div id="noResult" class="alert alert-warning text-center d-none mt-3">未找到相关记录</div>
+</div>
+
+<script src="https://cdn.bootcdn.net/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+<script>
+    let allData = [];
+    let tableHeaders = [];
+
+    // 1. 初始化：加载 CSV
+    window.onload = function() {
+        Papa.parse("data.csv", {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                allData = results.data;
+                tableHeaders = results.meta.fields; // 获取所有列名
+                
+                if(allData.length > 0) {
+                    initTableHeaders();
+                    renderTable(allData); // 默认显示前50条或全部，避免页面卡顿
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('tableWrapper').classList.remove('d-none');
+                }
+            },
+            error: function() {
+                document.getElementById('loading').innerHTML = '<span class="text-danger">无法读取 data.csv，请检查文件是否上传。</span>';
+            }
+        });
+    };
+
+    // 2. 初始化表头 (动态读取 CSV 列名)
+    function initTableHeaders() {
+        let theadHtml = '<tr>';
+        // 添加序号列
+        theadHtml += '<th style="width:50px">#</th>';
+        
+        tableHeaders.forEach(header => {
+            // 过滤掉空的列名（如果有）
+            if(header && header.trim() !== "") {
+                theadHtml += `<th>${header}</th>`;
+            }
+        });
+        theadHtml += '</tr>';
+        document.getElementById('tableHead').innerHTML = theadHtml;
+    }
+
+    // 3. 渲染表格内容
+    function renderTable(data) {
+        const tbody = document.getElementById('tableBody');
+        const maxDisplay = 100; // 限制默认显示条数，防止网页卡死
+        let html = '';
+
+        if (data.length === 0) {
+            document.getElementById('tableWrapper').classList.add('d-none');
+            document.getElementById('noResult').classList.remove('d-none');
+            return;
+        } else {
+            document.getElementById('tableWrapper').classList.remove('d-none');
+            document.getElementById('noResult').classList.add('d-none');
+        }
+
+        // 仅渲染符合条件的数据
+        const displayData = data.slice(0, maxDisplay); // 如果数据量巨大，仅展示前100条用于预览，或者展示搜索结果的所有内容
+        
+        displayData.forEach((row, index) => {
+            html += '<tr>';
+            html += `<td>${index + 1}</td>`; // 序号
+            
+            tableHeaders.forEach(header => {
+                if(header && header.trim() !== "") {
+                    let cellValue = row[header] || ""; 
+                    html += `<td>${cellValue}</td>`;
+                }
+            });
+            html += '</tr>';
+        });
+
+        tbody.innerHTML = html;
+        
+        if (data.length > maxDisplay) {
+            // 如果结果太多，提示一下
+            tbody.innerHTML += `<tr><td colspan="${tableHeaders.length + 1}" class="text-center text-muted">... 数据较多，仅显示前 ${maxDisplay} 条，请优化搜索关键词 ...</td></tr>`;
+        }
+    }
+
+    // 4. 执行搜索
+    function performSearch() {
+        const query = document.getElementById('searchInput').value.trim().toUpperCase();
+        
+        if (!query) {
+            // 如果为空，显示全部（受 maxDisplay 限制）
+            renderTable(allData);
+            return;
+        }
+
+        const filtered = allData.filter(row => {
+            // 在 "轴号" 列中搜索 (您可以修改这里改为全表搜索)
+            // 目前设定：只搜轴号。如果想搜所有列，请看下方注释
+            if (row['轴号']) {
+                return row['轴号'].toString().toUpperCase().includes(query);
+            }
+            return false;
+        });
+
+        renderTable(filtered);
+    }
+
+    // 5. 重置
+    function resetTable() {
+        document.getElementById('searchInput').value = '';
+        renderTable(allData);
+    }
+
+    // 回车搜索支持
+    document.getElementById("searchInput").addEventListener("keypress", function(event) {
+        if (event.key === "Enter") { performSearch(); }
+    });
+</script>
+
+</body>
+</html>
