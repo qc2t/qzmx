@@ -125,3 +125,98 @@
                     } else {
                         newRow[key] = val;
                     }
+                });
+                return newRow;
+            });
+
+            if (allData.length > 0) {
+                tableHeaders = Object.keys(allData[0]);
+                initTableHead();
+                renderTable(allData); // 默认显示全部或前100条
+                
+                document.getElementById('loading').classList.add('d-none');
+                document.getElementById('resultArea').style.display = 'block';
+                document.getElementById('statusMsg').innerText = `✅ 数据已就绪，共 ${allData.length} 条记录`;
+            } else {
+                throw new Error("Excel 内容为空");
+            }
+        } catch (e) {
+            console.error(e);
+            document.getElementById('loading').innerHTML = `<div class="text-danger">❌ 文件解析错误，请检查 Excel 格式</div>`;
+        }
+    }
+
+    // 格式化日期 YYYY-MM-DD
+    function formatDate(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    // 生成表头
+    function initTableHead() {
+        let html = '<tr><th style="width:50px">#</th>';
+        tableHeaders.forEach(h => html += `<th>${h}</th>`);
+        html += '</tr>';
+        document.getElementById('tableHead').innerHTML = html;
+    }
+
+    // 渲染表格
+    function renderTable(data) {
+        const tbody = document.getElementById('tableBody');
+        const MAX_SHOW = 100;
+        
+        if (data.length === 0) {
+            document.getElementById('resultArea').style.display = 'none';
+            document.getElementById('noResult').classList.remove('d-none');
+            return;
+        }
+
+        document.getElementById('resultArea').style.display = 'block';
+        document.getElementById('noResult').classList.add('d-none');
+
+        let html = '';
+        data.slice(0, MAX_SHOW).forEach((row, idx) => {
+            html += `<tr><td class="text-muted small">${idx + 1}</td>`;
+            tableHeaders.forEach(h => {
+                let val = row[h];
+                // 图片列自动识别 (.jpg/.png/.jpeg)
+                if (typeof val === 'string' && /\.(jpg|jpeg|png)$/i.test(val)) {
+                    html += `<td>
+                                <a href="${IMAGE_FOLDER}${val}" target="_blank">
+                                    <img src="${IMAGE_FOLDER}${val}" class="thumb-img" title="查看大图">
+                                </a>
+                             </td>`;
+                } else {
+                    html += `<td>${val}</td>`;
+                }
+            });
+            html += '</tr>';
+        });
+
+        if (data.length > MAX_SHOW) {
+            html += `<tr><td colspan="${tableHeaders.length+1}" class="text-center text-muted py-3">... 数据较多，仅显示前 ${MAX_SHOW} 条 ...</td></tr>`;
+        }
+        tbody.innerHTML = html;
+    }
+
+    // 搜索逻辑
+    function performSearch() {
+        const q = document.getElementById('searchInput').value.trim().toUpperCase();
+        if (!q) {
+            renderTable(allData);
+            return;
+        }
+        const filtered = allData.filter(row => 
+            Object.values(row).some(val => String(val).toUpperCase().includes(q))
+        );
+        renderTable(filtered);
+    }
+
+    // 回车支持
+    document.getElementById("searchInput").addEventListener("keypress", (e) => { if(e.key==="Enter") performSearch(); });
+</script>
+
+</body>
+</html>
