@@ -3,190 +3,280 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>曲轴数据查询系统（表格版）</title>
+    <title>曲轴信息查询系统</title>
     <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.2.3/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f8f9fa; padding: 20px 0; }
-        .container-fluid { max-width: 1400px; } /* 宽屏显示 */
+        body { background-color: #f0f2f5; padding-bottom: 40px; }
+        .main-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
         
-        /* 搜索框样式优化 */
-        .search-area {
+        /* 搜索框区域样式 */
+        .search-card {
             background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            margin-bottom: 25px;
         }
 
-        /* 表格样式仿 Excel */
-        .table-container {
+        /* 表格区域样式 */
+        .table-wrapper {
             background: white;
-            border-radius: 8px;
-            overflow-x: auto; /* 关键：手机端允许横向滚动 */
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border-radius: 12px;
+            overflow-x: auto; /* 手机端横向滚动 */
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            max-height: 80vh; /* 限制高度，固定表头 */
         }
         
-        .table {
-            margin-bottom: 0;
-            white-space: nowrap; /* 关键：防止文字换行，保持表格整齐 */
-            font-size: 0.95rem;
-        }
-        
+        .table { margin-bottom: 0; white-space: nowrap; font-size: 0.95rem; vertical-align: middle; }
         .table thead th {
             background-color: #e9ecef;
             color: #495057;
-            position: sticky; /* 表头固定 */
-            top: 0;
-            z-index: 1;
+            position: sticky; top: 0; z-index: 10;
+            padding: 15px;
         }
-        
-        /* 选中行高亮 */
-        .highlight-row { background-color: #fff3cd !important; }
+        .table tbody td { padding: 12px 15px; }
+
+        /* 图片缩略图样式 */
+        .thumb-img {
+            height: 40px;
+            width: auto;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            border: 1px solid #ddd;
+        }
+        .thumb-img:hover {
+            transform: scale(4); /* 鼠标悬停放大 */
+            z-index: 100;
+            position: relative;
+            box-shadow: 0 0 15px rgba(0,0,0,0.3);
+        }
+
+        /* 手机端优化 */
+        @media (max-width: 768px) {
+            .main-container { padding: 10px; }
+            .search-card { padding: 15px; }
+            h2 { font-size: 1.5rem; }
+        }
     </style>
 </head>
 <body>
 
-<div class="container-fluid">
-    <div class="text-center mb-3">
-        <h3>📊 曲轴信息表查询</h3>
+<div class="main-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 fw-bold text-primary">🔍 曲轴数据查询</h2>
+        <button class="btn btn-success" onclick="exportToImage()">📸 结果存为图片</button>
     </div>
 
-    <div class="search-area">
-        <div class="input-group">
-            <input type="text" id="searchInput" class="form-control form-control-lg" placeholder="输入轴号查询（如：2006T6 或 367）">
-            <button class="btn btn-primary btn-lg px-4" type="button" onclick="performSearch()">查询</button>
-            <button class="btn btn-outline-secondary btn-lg" type="button" onclick="resetTable()">重置(显示全部)</button>
+    <div class="search-card">
+        <div class="input-group input-group-lg">
+            <span class="input-group-text bg-white border-end-0">🔎</span>
+            <input type="text" id="searchInput" class="form-control border-start-0" placeholder="请输入轴号、炉号或任意关键词...">
+            <button class="btn btn-primary px-4 fw-bold" type="button" onclick="performSearch()">查询</button>
         </div>
-        <div class="form-text mt-2 text-muted">提示：支持模糊搜索，结果将保留源文件表格格式。</div>
+        <div class="d-flex justify-content-between mt-2">
+            <small class="text-muted" id="statusMsg">系统初始化中...</small>
+            <button class="btn btn-link btn-sm text-decoration-none" onclick="resetTable()">重置显示全部</button>
+        </div>
+        
+        <div id="manualUpload" class="mt-3 pt-3 border-top d-none">
+            <label class="small text-muted mb-1">本地模式：如果无法自动加载数据，请手动选择 qzmx.xlsx 文件：</label>
+            <input type="file" id="localFileBtn" class="form-control form-control-sm" accept=".xlsx">
+        </div>
     </div>
 
-    <div id="loading" class="text-center text-muted my-4">正在加载数据...</div>
-    <div class="table-container d-none" id="tableWrapper">
-        <table class="table table-bordered table-striped table-hover" id="dataTable">
-            <thead id="tableHead">
-                </thead>
-            <tbody id="tableBody">
-                </tbody>
+    <div id="loading" class="text-center my-5 d-none">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2 text-muted">正在解析 Excel 数据...</div>
+    </div>
+
+    <div id="resultArea" class="table-wrapper d-none">
+        <table class="table table-striped table-hover" id="dataTable">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
         </table>
     </div>
-    <div id="noResult" class="alert alert-warning text-center d-none mt-3">未找到相关记录</div>
+
+    <div id="noResult" class="alert alert-warning text-center d-none mt-4">
+        未找到包含该关键词的记录
+    </div>
 </div>
 
-<script src="https://cdn.bootcdn.net/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-<script>
-    let allData = [];
-    let tableHeaders = [];
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-    // 1. 初始化：加载 CSV
+<script>
+    let allData = []; // 存储所有数据
+    let tableHeaders = []; // 存储表头
+    const EXCEL_FILENAME = "qzmx.xlsx"; // 设定的文件名
+
+    // === 1. 初始化逻辑 ===
     window.onload = function() {
-        Papa.parse("data.csv", {
-            download: true,
-            header: true,
-            skipEmptyLines: true,
-            complete: function(results) {
-                allData = results.data;
-                tableHeaders = results.meta.fields; // 获取所有列名
-                
-                if(allData.length > 0) {
-                    initTableHeaders();
-                    renderTable(allData); // 默认显示前50条或全部，避免页面卡顿
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('tableWrapper').classList.remove('d-none');
-                }
-            },
-            error: function() {
-                document.getElementById('loading').innerHTML = '<span class="text-danger">无法读取 data.csv，请检查文件是否上传。</span>';
-            }
-        });
+        // 如果是网页链接打开，尝试自动下载文件
+        if (window.location.protocol.startsWith('http')) {
+            loadOnlineExcel();
+        } else {
+            // 如果是双击本地html打开，显示手动上传框
+            document.getElementById('manualUpload').classList.remove('d-none');
+            document.getElementById('statusMsg').innerText = "本地模式：请选择文件开始";
+        }
     };
 
-    // 2. 初始化表头 (动态读取 CSV 列名)
-    function initTableHeaders() {
-        let theadHtml = '<tr>';
-        // 添加序号列
-        theadHtml += '<th style="width:50px">#</th>';
-        
-        tableHeaders.forEach(header => {
-            // 过滤掉空的列名（如果有）
-            if(header && header.trim() !== "") {
-                theadHtml += `<th>${header}</th>`;
-            }
-        });
-        theadHtml += '</tr>';
-        document.getElementById('tableHead').innerHTML = theadHtml;
+    // === 2. 加载网络 Excel ===
+    function loadOnlineExcel() {
+        document.getElementById('loading').classList.remove('d-none');
+        fetch(EXCEL_FILENAME)
+            .then(res => {
+                if (!res.ok) throw new Error("文件未找到");
+                return res.arrayBuffer();
+            })
+            .then(buffer => parseExcelData(buffer))
+            .catch(err => {
+                document.getElementById('loading').classList.add('d-none');
+                document.getElementById('statusMsg').innerHTML = `<span class="text-danger">自动加载失败 (${err.message})，请使用下方手动选择。</span>`;
+                document.getElementById('manualUpload').classList.remove('d-none');
+            });
     }
 
-    // 3. 渲染表格内容
+    // === 3. 监听手动文件选择 ===
+    document.getElementById('localFileBtn').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        document.getElementById('loading').classList.remove('d-none');
+        const reader = new FileReader();
+        reader.onload = function(e) { parseExcelData(e.target.result); };
+        reader.readAsArrayBuffer(file);
+    });
+
+    // === 4. 解析 Excel 核心函数 ===
+    function parseExcelData(buffer) {
+        try {
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0]; // 读取第一个工作表
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // 转换为 JSON，保留空值防止错位
+            allData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+            if (allData.length > 0) {
+                // 提取表头
+                tableHeaders = Object.keys(allData[0]);
+                initTableStruct(); // 生成表头HTML
+                renderTable(allData); // 渲染数据
+                
+                document.getElementById('loading').classList.add('d-none');
+                document.getElementById('resultArea').classList.remove('d-none');
+                document.getElementById('statusMsg').innerText = `数据加载成功，共 ${allData.length} 条记录`;
+                document.getElementById('manualUpload').classList.add('d-none'); // 成功后隐藏上传框
+            }
+        } catch (e) {
+            alert("解析失败，请确认文件格式正确");
+            document.getElementById('loading').classList.add('d-none');
+        }
+    }
+
+    // === 5. 生成表头 ===
+    function initTableStruct() {
+        let html = '<tr><th style="width:50px">#</th>';
+        tableHeaders.forEach(header => {
+            html += `<th>${header}</th>`;
+        });
+        html += '</tr>';
+        document.getElementById('tableHead').innerHTML = html;
+    }
+
+    // === 6. 渲染表格内容 (含图片识别) ===
     function renderTable(data) {
         const tbody = document.getElementById('tableBody');
-        const maxDisplay = 100; // 限制默认显示条数，防止网页卡死
-        let html = '';
-
+        const MAX_DISPLAY = 100; // 限制最多显示100条，防止卡顿
+        
         if (data.length === 0) {
-            document.getElementById('tableWrapper').classList.add('d-none');
+            document.getElementById('resultArea').classList.add('d-none');
             document.getElementById('noResult').classList.remove('d-none');
             return;
-        } else {
-            document.getElementById('tableWrapper').classList.remove('d-none');
-            document.getElementById('noResult').classList.add('d-none');
         }
-
-        // 仅渲染符合条件的数据
-        const displayData = data.slice(0, maxDisplay); // 如果数据量巨大，仅展示前100条用于预览，或者展示搜索结果的所有内容
         
-        displayData.forEach((row, index) => {
+        document.getElementById('resultArea').classList.remove('d-none');
+        document.getElementById('noResult').classList.add('d-none');
+
+        let html = '';
+        data.slice(0, MAX_DISPLAY).forEach((row, index) => {
             html += '<tr>';
-            html += `<td>${index + 1}</td>`; // 序号
+            html += `<td class="text-muted">${index + 1}</td>`; // 序号
             
             tableHeaders.forEach(header => {
-                if(header && header.trim() !== "") {
-                    let cellValue = row[header] || ""; 
-                    html += `<td>${cellValue}</td>`;
+                let cellValue = row[header] || "";
+                let cellHtml = cellValue;
+
+                // 智能检测：如果内容是以 .jpg / .png 结尾，则显示为图片
+                if (typeof cellValue === 'string' && (cellValue.toLowerCase().endsWith('.jpg') || cellValue.toLowerCase().endsWith('.png'))) {
+                    // 假设图片存储在 images/ 文件夹下
+                    cellHtml = `<a href="images/${cellValue}" target="_blank">
+                                  <img src="images/${cellValue}" class="thumb-img" alt="图">
+                                </a>`;
                 }
+
+                html += `<td>${cellHtml}</td>`;
             });
             html += '</tr>';
         });
 
-        tbody.innerHTML = html;
-        
-        if (data.length > maxDisplay) {
-            // 如果结果太多，提示一下
-            tbody.innerHTML += `<tr><td colspan="${tableHeaders.length + 1}" class="text-center text-muted">... 数据较多，仅显示前 ${maxDisplay} 条，请优化搜索关键词 ...</td></tr>`;
+        if (data.length > MAX_DISPLAY) {
+            html += `<tr><td colspan="${tableHeaders.length + 1}" class="text-center text-muted py-3">... 数据较多，仅显示前 ${MAX_DISPLAY} 条，请输入更精确的关键词 ...</td></tr>`;
         }
+        
+        tbody.innerHTML = html;
     }
 
-    // 4. 执行搜索
+    // === 7. 搜索功能 ===
     function performSearch() {
         const query = document.getElementById('searchInput').value.trim().toUpperCase();
         
         if (!query) {
-            // 如果为空，显示全部（受 maxDisplay 限制）
-            renderTable(allData);
+            renderTable(allData); // 为空显示全部
             return;
         }
 
+        // 模糊搜索：只要任何一列包含关键词就匹配
         const filtered = allData.filter(row => {
-            // 在 "轴号" 列中搜索 (您可以修改这里改为全表搜索)
-            // 目前设定：只搜轴号。如果想搜所有列，请看下方注释
-            if (row['轴号']) {
-                return row['轴号'].toString().toUpperCase().includes(query);
-            }
-            return false;
+            return Object.values(row).some(val => 
+                String(val).toUpperCase().includes(query)
+            );
         });
 
         renderTable(filtered);
     }
 
-    // 5. 重置
     function resetTable() {
         document.getElementById('searchInput').value = '';
         renderTable(allData);
     }
 
+    // === 8. 导出为图片功能 ===
+    function exportToImage() {
+        const element = document.getElementById('resultArea');
+        if (element.classList.contains('d-none')) {
+            alert("当前没有可导出的查询结果");
+            return;
+        }
+        
+        // 临时调整样式以保证截图完整
+        const originalMaxHeight = element.style.maxHeight;
+        element.style.maxHeight = "none";
+        
+        html2canvas(element, { backgroundColor: "#ffffff" }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = '查询结果_' + new Date().getTime() + '.png';
+            link.href = canvas.toDataURL();
+            link.click();
+            
+            // 恢复样式
+            element.style.maxHeight = originalMaxHeight;
+        });
+    }
+
     // 回车搜索支持
-    document.getElementById("searchInput").addEventListener("keypress", function(event) {
-        if (event.key === "Enter") { performSearch(); }
-    });
+    document.getElementById("searchInput").addEventListener("keypress", (e) => { if(e.key==="Enter") performSearch(); });
 </script>
 
 </body>
