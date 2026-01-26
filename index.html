@@ -3,39 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>曲轴数据查询系统</title>
+    <title>曲轴数据查询系统 (强力日期修复版)</title>
     <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.2.3/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-        .main-container { max-width: 1400px; margin: 40px auto; padding: 0 20px; }
+        body { background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        .main-container { max-width: 1400px; margin: 30px auto; padding: 0 15px; }
 
-        /* 搜索框区域 */
         .search-card {
-            background: white; padding: 40px; border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; margin-bottom: 30px;
+            background: white; padding: 30px; border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.05); margin-bottom: 20px; text-align: center;
         }
 
-        /* 结果展示区 */
         .table-card {
-            background: white; border-radius: 12px; overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: none;
+            background: white; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+            overflow: hidden; display: none;
         }
+
         .table-responsive { overflow-x: auto; max-height: 80vh; }
-        
-        /* 表格样式 */
         .table { margin-bottom: 0; white-space: nowrap; vertical-align: middle; }
+        
         .table thead th {
-            position: sticky; top: 0; background-color: #f8f9fa; color: #495057;
+            position: sticky; top: 0; background-color: #e9ecef; color: #495057;
             padding: 15px; z-index: 10; border-bottom: 2px solid #dee2e6;
         }
-        .table tbody td { padding: 12px 15px; color: #333; }
+        .table tbody td { padding: 12px 15px; }
 
-        /* 图片缩略图 */
         .thumb-img {
-            height: 40px; width: auto; border-radius: 4px; border: 1px solid #eee;
-            cursor: pointer; transition: transform 0.2s;
+            height: 40px; border-radius: 4px; border: 1px solid #dee2e6;
+            transition: transform 0.2s; cursor: pointer;
         }
-        .thumb-img:hover { transform: scale(5); z-index: 99; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .thumb-img:hover { transform: scale(5); z-index: 100; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        
+        /* 错误提示样式 */
+        .err-box { background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; font-size: 0.9em; display: inline-block; margin-top: 10px;}
     </style>
 </head>
 <body>
@@ -45,15 +45,15 @@
 
     <div class="search-card">
         <div class="input-group input-group-lg" style="max-width: 800px; margin: 0 auto;">
-            <input type="text" id="searchInput" class="form-control" placeholder="请输入轴号、炉号或日期 (例如 2026-01-15)...">
+            <input type="text" id="searchInput" class="form-control" placeholder="输入轴号、炉号、日期 (如 2026-01-15)...">
             <button class="btn btn-primary px-5 fw-bold" onclick="performSearch()">查询</button>
         </div>
-        <div id="statusMsg" class="mt-3 text-muted small">系统初始化中...</div>
+        <div class="mt-3 text-muted small" id="statusMsg">等待加载数据...</div>
     </div>
 
     <div id="loading" class="text-center py-5">
         <div class="spinner-border text-primary" role="status"></div>
-        <div class="mt-3 text-muted">正在读取 Excel 数据...</div>
+        <div class="mt-3 text-muted">正在连接数据库...</div>
     </div>
 
     <div id="resultArea" class="table-card">
@@ -72,51 +72,49 @@
 
 <script>
     // === 配置 ===
-    const EXCEL_FILENAME = "qzmx.xlsx"; // 确保文件名完全一致
-    const IMAGE_FOLDER = "images/";     // 图片目录
+    const EXCEL_FILENAME = "qzmx.xlsx"; // 只有这里需要改文件名
+    const IMAGE_FOLDER = "images/";     // 图片文件夹
     // ===========
 
     let allData = [];
     let tableHeaders = [];
 
-    // 1. 自动加载
     window.onload = function() {
+        // 尝试加载远程文件
         fetch(EXCEL_FILENAME)
             .then(res => {
-                if (!res.ok) throw new Error("无法读取文件，请检查文件名是否为 qzmx.xlsx");
+                if (!res.ok) throw new Error("文件未找到 (404)");
                 return res.arrayBuffer();
             })
             .then(buffer => processExcel(buffer))
             .catch(err => {
-                document.getElementById('loading').innerHTML = `<div class="text-danger fw-bold">❌ 加载失败</div><div class="small text-muted mt-2">${err.message}</div>`;
-                document.getElementById('statusMsg').innerText = "加载失败";
+                // 如果远程加载失败，提示错误（方便调试）
+                document.getElementById('loading').innerHTML = 
+                    `<div class="text-danger fw-bold">❌ 加载失败</div>
+                     <div class="err-box">原因：无法读取 ${EXCEL_FILENAME}<br>请确保文件已上传至 GitHub 仓库根目录。<br>(${err.message})</div>`;
             });
     };
 
-    // 2. 处理 Excel (核心修复逻辑)
     function processExcel(buffer) {
         try {
             const workbook = XLSX.read(buffer, { type: 'array' });
             const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
             
-            // 关键设置：cellDates: true 让库把日期识别为对象
-            const rawData = XLSX.utils.sheet_to_json(firstSheet, { defval: "", cellDates: true });
+            // ★★★ 核心改动：raw: true ★★★
+            // 我们读取"最原始"的数据（数字），不让 SheetJS 做任何猜测
+            const rawData = XLSX.utils.sheet_to_json(firstSheet, { defval: "", raw: true });
 
-            // 遍历所有数据，修复日期格式
+            // ★★★ 强力日期清洗 ★★★
             allData = rawData.map(row => {
                 const newRow = {};
                 Object.keys(row).forEach(key => {
-                    let val = row[key];
-                    
-                    // === 日期修正核心代码 ===
-                    if (val instanceof Date) {
-                        // 1. 加上12小时，防止因为时差导致"少一天" (例如 15号变14号)
-                        val.setHours(val.getHours() + 12);
-                        // 2. 截取 ISO 字符串的前10位 (YYYY-MM-DD)
-                        newRow[key] = val.toISOString().split('T')[0];
-                    } 
-                    else {
-                        newRow[key] = val;
+                    const val = row[key];
+                    // 只有当列名包含"时间"或"日期"，且值是数字时，才执行转换
+                    // Excel 日期通常是 > 30000 的数字
+                    if (isDateColumn(key) && typeof val === 'number' && val > 30000) {
+                        newRow[key] = excelSerialToDate(val);
+                    } else {
+                        newRow[key] = val; // 其他情况保持原样
                     }
                 });
                 return newRow;
@@ -125,20 +123,42 @@
             if (allData.length > 0) {
                 tableHeaders = Object.keys(allData[0]);
                 initTableHead();
-                renderTable(allData);
+                renderTable(allData); 
                 document.getElementById('loading').classList.add('d-none');
                 document.getElementById('resultArea').style.display = 'block';
                 document.getElementById('statusMsg').innerText = `✅ 数据就绪，共 ${allData.length} 条记录`;
             } else {
-                throw new Error("Excel 数据为空");
+                throw new Error("Excel 内容为空");
             }
         } catch (e) {
             console.error(e);
-            document.getElementById('loading').innerHTML = `<div class="text-danger">解析出错：请确保文件是标准的 .xlsx 格式</div>`;
+            document.getElementById('loading').innerHTML = `<div class="text-danger">❌ 解析错误：${e.message}</div>`;
         }
     }
 
-    // 生成表头
+    // === 辅助：判断是否为日期列 ===
+    function isDateColumn(colName) {
+        if (!colName) return false;
+        const name = String(colName);
+        // 如果您的列名包含 "时间"、"日期"、"Date"、"Time" 任意一个，就视为日期列
+        return name.includes("时间") || name.includes("日期") || 
+               name.toLowerCase().includes("date") || name.toLowerCase().includes("time");
+    }
+
+    // === 核心：Excel 数字转 YYYY-MM-DD (纯数学法，无视时区) ===
+    function excelSerialToDate(serial) {
+        // 使用 SheetJS 内置的 SSF 引擎解析数字
+        const dateInfo = XLSX.SSF.parse_date_code(serial);
+        // dateInfo 结构如: {y:2024, m:1, d:15, ...}
+        if (dateInfo) {
+            const y = dateInfo.y;
+            const m = String(dateInfo.m).padStart(2, '0'); // 补零
+            const d = String(dateInfo.d).padStart(2, '0'); // 补零
+            return `${y}-${m}-${d}`;
+        }
+        return serial; // 解析失败则返回原数字
+    }
+
     function initTableHead() {
         let html = '<tr><th style="width:50px">#</th>';
         tableHeaders.forEach(h => html += `<th>${h}</th>`);
@@ -146,7 +166,6 @@
         document.getElementById('tableHead').innerHTML = html;
     }
 
-    // 渲染表格
     function renderTable(data) {
         const tbody = document.getElementById('tableBody');
         const MAX_SHOW = 100;
@@ -156,7 +175,6 @@
             document.getElementById('noResult').classList.remove('d-none');
             return;
         }
-
         document.getElementById('resultArea').style.display = 'block';
         document.getElementById('noResult').classList.add('d-none');
 
@@ -165,7 +183,7 @@
             html += `<tr><td class="text-muted small">${idx + 1}</td>`;
             tableHeaders.forEach(h => {
                 let val = row[h];
-                // 图片检测：如果是 jpg/png 结尾，显示缩略图
+                // 图片列自动识别
                 if (typeof val === 'string' && /\.(jpg|jpeg|png)$/i.test(val)) {
                     html += `<td><a href="${IMAGE_FOLDER}${val}" target="_blank"><img src="${IMAGE_FOLDER}${val}" class="thumb-img"></a></td>`;
                 } else {
@@ -181,7 +199,6 @@
         tbody.innerHTML = html;
     }
 
-    // 搜索功能
     function performSearch() {
         const q = document.getElementById('searchInput').value.trim().toUpperCase();
         if (!q) { renderTable(allData); return; }
@@ -191,7 +208,6 @@
         renderTable(filtered);
     }
 
-    // 绑定回车键
     document.getElementById("searchInput").addEventListener("keypress", (e) => { if(e.key==="Enter") performSearch(); });
 </script>
 
